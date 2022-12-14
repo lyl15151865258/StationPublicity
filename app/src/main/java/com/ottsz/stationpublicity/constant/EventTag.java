@@ -15,5 +15,6 @@ public class EventTag {
 
     public static final String START_IMAGE = "start_image";
     public static final String START_VIDEO = "start_video";
+    public static final String STOP_VIDEO = "stop_video";
 
 }

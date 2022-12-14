@@ -20,6 +20,8 @@ import com.ottsz.stationpublicity.R;
 import com.ottsz.stationpublicity.bean.EventMsg;
 import com.ottsz.stationpublicity.constant.EventTag;
 import com.ottsz.stationpublicity.contentprovider.SPHelper;
+import com.ottsz.stationpublicity.util.LogUtils;
+import com.ottsz.stationpublicity.util.TimeUtils;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -39,11 +41,15 @@ import java.util.concurrent.TimeUnit;
 
 public class TimeTaskService extends Service {
 
+    private final String TAG = "TimeTaskService";
     private Context mContext;
     private TimeTaskServiceBinder timeTaskServiceBinder;
     private ScheduledExecutorService threadPool;
     private int showTime;
     private int currentSourceType = 0;
+    // 定时检查间隔时间200ms
+    private static final int betweenTime = 200;
+    private long startTime = 0L;
     // 标记当前是否暂停
     public boolean isPause = false;
 
@@ -121,11 +127,15 @@ public class TimeTaskService extends Service {
         threadPool.scheduleAtFixedRate(() -> {
             if (!isPause && currentSourceType == 1) {
                 // 如果当前显示的是图片，则指定时间滚动到下一个资源
-                EventMsg msg = new EventMsg();
-                msg.setTag(EventTag.NEXT_PAGE);
-                EventBus.getDefault().post(msg);
+                if (TimeUtils.getCurrentTimeMillis() - startTime > showTime * 1000L) {
+                    LogUtils.d(TAG, "10秒发送显示图片的消息：" + startTime);
+                    EventMsg msg = new EventMsg();
+                    msg.setTag(EventTag.NEXT_PAGE);
+                    EventBus.getDefault().post(msg);
+                    startTime = Long.MAX_VALUE;
+                }
             }
-        }, 0, showTime, TimeUnit.SECONDS);
+        }, 0, betweenTime, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -145,11 +155,15 @@ public class TimeTaskService extends Service {
         switch (msg.getTag()) {
             case EventTag.START_IMAGE:
                 // 开始展示图片
+                LogUtils.d(TAG, "开始展示图片");
                 currentSourceType = 1;
+                startTime = TimeUtils.getCurrentTimeMillis();
                 break;
             case EventTag.START_VIDEO:
                 // 开始展示视频
+                LogUtils.d(TAG, "开始播放视频");
                 currentSourceType = 2;
+                startTime = Long.MAX_VALUE;
                 break;
             default:
                 break;
