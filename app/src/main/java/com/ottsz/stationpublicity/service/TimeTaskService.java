@@ -20,8 +20,6 @@ import com.ottsz.stationpublicity.R;
 import com.ottsz.stationpublicity.bean.EventMsg;
 import com.ottsz.stationpublicity.constant.EventTag;
 import com.ottsz.stationpublicity.contentprovider.SPHelper;
-import com.ottsz.stationpublicity.util.LogUtils;
-import com.ottsz.stationpublicity.util.TimeUtils;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -41,15 +39,13 @@ import java.util.concurrent.TimeUnit;
 
 public class TimeTaskService extends Service {
 
-    private final String TAG = "TimeTaskService";
     private Context mContext;
     private TimeTaskServiceBinder timeTaskServiceBinder;
     private ScheduledExecutorService threadPool;
     private int showTime;
-    // 定时检查间隔时间200ms
-    private static final int betweenTime = 200;
-    private long startTime = 0L;
     private int currentSourceType = 0;
+    // 标记当前是否暂停
+    public boolean isPause = false;
 
     @Nullable
     @Override
@@ -71,7 +67,6 @@ public class TimeTaskService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        LogUtils.d(TAG, "TimeTaskService:onCreate");
         mContext = this;
         showTime = SPHelper.getInt("SHOWTIME", 10);
         threadPool = Executors.newScheduledThreadPool(1);
@@ -85,7 +80,6 @@ public class TimeTaskService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        LogUtils.d(TAG, "TimeTaskService:onStartCommand");
         return super.onStartCommand(intent, flags, startId);
     }
 
@@ -125,16 +119,13 @@ public class TimeTaskService extends Service {
     @SuppressLint("WrongConstant")
     public void executeShutDown() {
         threadPool.scheduleAtFixedRate(() -> {
-            if (currentSourceType == 1) {
+            if (!isPause && currentSourceType == 1) {
                 // 如果当前显示的是图片，则指定时间滚动到下一个资源
-                if (TimeUtils.getCurrentTimeMillis() - startTime > showTime * 1000L) {
-                    LogUtils.d(TAG, "5秒发送显示图片的消息");
-                    EventMsg msg = new EventMsg();
-                    msg.setTag(EventTag.NEXT_PAGE);
-                    EventBus.getDefault().post(msg);
-                }
+                EventMsg msg = new EventMsg();
+                msg.setTag(EventTag.NEXT_PAGE);
+                EventBus.getDefault().post(msg);
             }
-        }, 0, betweenTime, TimeUnit.MILLISECONDS);
+        }, 0, showTime, TimeUnit.SECONDS);
     }
 
     /**
@@ -154,15 +145,11 @@ public class TimeTaskService extends Service {
         switch (msg.getTag()) {
             case EventTag.START_IMAGE:
                 // 开始展示图片
-                LogUtils.d(TAG, "开始展示图片");
                 currentSourceType = 1;
-                startTime = TimeUtils.getCurrentTimeMillis();
                 break;
             case EventTag.START_VIDEO:
                 // 开始展示视频
-                LogUtils.d(TAG, "开始播放视频");
                 currentSourceType = 2;
-                startTime = Long.MAX_VALUE;
                 break;
             default:
                 break;

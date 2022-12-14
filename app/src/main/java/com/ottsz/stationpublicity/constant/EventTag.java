@@ -14,7 +14,6 @@ public class EventTag {
     public static final String LAST_PAGE = "last_page";
 
     public static final String START_IMAGE = "start_image";
-
     public static final String START_VIDEO = "start_video";
 
 }

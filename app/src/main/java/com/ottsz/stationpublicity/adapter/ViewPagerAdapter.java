@@ -14,8 +14,6 @@ import com.bumptech.glide.Glide;
 import com.ottsz.stationpublicity.R;
 import com.ottsz.stationpublicity.bean.Resource;
 import com.ottsz.stationpublicity.constant.ApkInfo;
-import com.ottsz.stationpublicity.util.LogUtils;
-import com.ottsz.stationpublicity.util.cache.PreloadManager;
 
 import java.io.File;
 import java.util.List;
@@ -57,32 +55,14 @@ public class ViewPagerAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                 ImageViewHolder viewHolder = (ImageViewHolder) holder;
                 Glide.with(mContext)
                         .load(file)
-                        .placeholder(R.drawable.loading)
                         .error(R.drawable.error)
                         .override(1920, 1080)
                         .into(viewHolder.imageView);
                 viewHolder.mPosition = position % resourceList.size();
-                LogUtils.d("加载本地图片：" + file.getAbsolutePath() + "，mPosition：" + position % resourceList.size());
             } else {
                 VideoViewHolder viewHolder = (VideoViewHolder) holder;
-                //开始预加载
-                PreloadManager.getInstance(mContext).addPreloadTask(file.getAbsolutePath(), position);
                 viewHolder.mPosition = position % resourceList.size();
-                LogUtils.d("加载本地视频：" + file.getAbsolutePath() + "，mPosition：" + position % resourceList.size());
             }
-        }
-    }
-
-    @Override
-    public void onViewDetachedFromWindow(@NonNull RecyclerView.ViewHolder holder) {
-        super.onViewDetachedFromWindow(holder);
-        if (holder instanceof VideoViewHolder) {
-            // 判断是视频item
-            VideoViewHolder viewHolder = (VideoViewHolder) holder;
-            Resource resource = resourceList.get(viewHolder.mPosition % resourceList.size());
-            File file = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, resource.getLocalName());
-            // 取消视频预加载
-            PreloadManager.getInstance(holder.itemView.getContext()).removePreloadTask(file.getAbsolutePath());
         }
     }
 

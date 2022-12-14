@@ -11,6 +11,8 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -43,7 +45,6 @@ import com.ottsz.stationpublicity.util.GsonUtils;
 import com.ottsz.stationpublicity.util.LogUtils;
 import com.ottsz.stationpublicity.util.NetworkUtil;
 import com.ottsz.stationpublicity.util.Utils;
-import com.ottsz.stationpublicity.util.cache.PreloadManager;
 import com.ottsz.stationpublicity.widget.DownLoadDialog;
 import com.ottsz.stationpublicity.widget.SelectDialog;
 
@@ -70,10 +71,9 @@ public class MainActivity extends BaseActivity<VideoView> {
     private Context mContext;
     private ViewPager2 viewPager;
     private ViewPagerAdapter viewPagerAdapter;
-    private PreloadManager mPreloadManager;
     private List<Resource> remoteList, localList;
     private TimeTaskService timeTaskService;
-    private int mCurPos, currentDownload;
+    private int currentPosition, currentDownload;
     private DbHelper dbHelper;
     private DownLoadDialog progressDialog;
     private ProgressBar myProgressBar;
@@ -87,26 +87,18 @@ public class MainActivity extends BaseActivity<VideoView> {
 
         initViewPager();
         initVideoView();
-
-        mPreloadManager = PreloadManager.getInstance(this);
+        initTimeTaskService();
+        initDownloadDialog();
 
         if (!EventBus.getDefault().isRegistered(this)) {
             EventBus.getDefault().register(this);
         }
-        initTimeTaskService();
         dbHelper = ((StationPublicityApplication) getApplication()).getDbHelper();
-        // 下载对话框
-        progressDialog = new DownLoadDialog(mContext);
-        myProgressBar = progressDialog.findViewById(R.id.progressBar);
-        tvPercent = progressDialog.findViewById(R.id.tvPercent);
-        tvProgress = progressDialog.findViewById(R.id.tvProgress);
-        progressDialog.setCancelable(false);
     }
 
     private void initViewPager() {
         viewPager = findViewById(R.id.viewpager);
         tvPage = findViewById(R.id.tvPage);
-        viewPager.setOffscreenPageLimit(4);
         remoteList = new ArrayList<>();
         localList = new ArrayList<>();
         viewPagerAdapter = new ViewPagerAdapter(this, localList);
@@ -120,6 +112,15 @@ public class MainActivity extends BaseActivity<VideoView> {
         mVideoView.addOnStateChangeListener(onStateChangeListener);
     }
 
+    private void initDownloadDialog() {
+        // 下载对话框
+        progressDialog = new DownLoadDialog(mContext);
+        myProgressBar = progressDialog.findViewById(R.id.progressBar);
+        tvPercent = progressDialog.findViewById(R.id.tvPercent);
+        tvProgress = progressDialog.findViewById(R.id.tvProgress);
+        progressDialog.setCancelable(false);
+    }
+
     private final BaseVideoView.OnStateChangeListener onStateChangeListener = new BaseVideoView.OnStateChangeListener() {
         @Override
         public void onPlayerStateChanged(int playerState) {
@@ -131,8 +132,11 @@ public class MainActivity extends BaseActivity<VideoView> {
             if (playState == VideoView.STATE_PLAYBACK_COMPLETED) {
                 mVideoView.release();
                 // 视频播放结束，滚动到下一页
-                mCurPos++;
-                viewPager.setCurrentItem(mCurPos, true);
+                if (!timeTaskService.isPause) {
+                    // 如果当前没有暂停，则播放完毕后，播放下一个资源
+                    currentPosition++;
+                    viewPager.setCurrentItem(currentPosition, true);
+                }
             }
         }
     };
@@ -150,13 +154,13 @@ public class MainActivity extends BaseActivity<VideoView> {
                 return;
             }
             mIsReverseScroll = position < mCurItem;
-            LogUtils.d(TAG, "页面滚动：" + (mIsReverseScroll ? "反向" : "正向"));
         }
 
         @Override
         public void onPageSelected(int position) {
             super.onPageSelected(position);
-            mCurPos = position;
+            currentPosition = position;
+            LogUtils.d(TAG, "当前选中页面：" + currentPosition);
             if (localList != null && localList.size() > 0) {
                 viewPager.post(() -> startPlay(position % localList.size()));
                 tvPage.setVisibility(View.VISIBLE);
@@ -172,15 +176,6 @@ public class MainActivity extends BaseActivity<VideoView> {
             if (state == ViewPager2.SCROLL_STATE_DRAGGING) {
                 mCurItem = viewPager.getCurrentItem();
             }
-            if (state == ViewPager2.SCROLL_STATE_IDLE) {
-                if (localList.get(mCurPos % localList.size()).getType() == 2) {
-                    mPreloadManager.resumePreload(mCurPos, mIsReverseScroll);
-                }
-            } else {
-                if (localList.get(mCurPos % localList.size()).getType() == 2) {
-                    mPreloadManager.pausePreload(mCurPos, mIsReverseScroll);
-                }
-            }
         }
     };
 
@@ -190,19 +185,21 @@ public class MainActivity extends BaseActivity<VideoView> {
         }
         //ViewPage2内部是通过RecyclerView去实现的，它位于ViewPager2的第0个位置
         RecyclerView mViewPagerImpl = (RecyclerView) viewPager.getChildAt(0);
-        for (int i = 0; i < localList.size(); i++) {
+        int count = mViewPagerImpl.getChildCount();
+        LogUtils.d(TAG, "展示资源：" + localList.get(position).getLocalName());
+        for (int i = 0; i < count; i++) {
             View itemView = mViewPagerImpl.getChildAt(i);
             if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.VideoViewHolder) {
-                LogUtils.d(TAG, "当前是VideoViewHolder");
                 ViewPagerAdapter.VideoViewHolder viewHolder = (ViewPagerAdapter.VideoViewHolder) itemView.getTag();
-                if (viewHolder.mPosition == position) {
-                    mVideoView.release();
-                    Utils.removeViewFormParent(mVideoView);
+                // 先移除VideoView
+                mVideoView.release();
+                Utils.removeViewFormParent(mVideoView);
+                // 如果是当前显示的ViewHolder
+                if (viewHolder.mPosition == position % localList.size()) {
                     Resource resource = localList.get(position);
                     File file = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, resource.getLocalName());
-                    String playUrl = mPreloadManager.getPlayUrl(file.getAbsolutePath());
-                    LogUtils.d(TAG, "播放视频：" + localList.get(position).getLocalName());
-                    mVideoView.setUrl(playUrl);
+                    LogUtils.d(TAG, "展示视频：" + localList.get(position).getLocalName());
+                    mVideoView.setUrl(file.getAbsolutePath());
                     viewHolder.mPlayerContainer.addView(mVideoView, 0);
                     mVideoView.start();
                     // 发送播放视频的通知
@@ -210,14 +207,11 @@ public class MainActivity extends BaseActivity<VideoView> {
                     msg.setTag(EventTag.START_VIDEO);
                     EventBus.getDefault().post(msg);
                     break;
-                } else {
-                    mVideoView.release();
-                    Utils.removeViewFormParent(mVideoView);
                 }
             } else if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.ImageViewHolder) {
-                LogUtils.d(TAG, "当前是ImageViewHolder");
                 ViewPagerAdapter.ImageViewHolder viewHolder = (ViewPagerAdapter.ImageViewHolder) itemView.getTag();
-                if (viewHolder.mPosition == position) {
+                if (viewHolder.mPosition == position % localList.size()) {
+                    LogUtils.d(TAG, "展示图片：" + localList.get(position).getLocalName());
                     // 发送播放图片的通知
                     EventMsg msg = new EventMsg();
                     msg.setTag(EventTag.START_IMAGE);
@@ -255,41 +249,28 @@ public class MainActivity extends BaseActivity<VideoView> {
      */
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void receiveMessage(EventMsg msg) {
-        mCurPos = viewPager.getCurrentItem();
+//        mCurPos = viewPager.getCurrentItem();
         switch (msg.getTag()) {
             case EventTag.NEXT_PAGE:
                 // 滚动到下一页
-                mCurPos++;
-                viewPager.setCurrentItem(mCurPos, true);
+                currentPosition++;
+                viewPager.setCurrentItem(currentPosition, true);
                 break;
             case EventTag.LAST_PAGE:
                 // 滚动到上一页
-                mCurPos--;
-                viewPager.setCurrentItem(mCurPos, true);
+                currentPosition--;
+                viewPager.setCurrentItem(currentPosition, true);
                 break;
             default:
                 break;
         }
     }
 
-    /**
-     * 开始一个新页面
-     */
-    private void startNewPage() {
-        EventMsg msg1 = new EventMsg();
-        int position = mCurPos % localList.size();
-        if (localList.get(position).getType() == 1) {
-            msg1.setTag(EventTag.START_IMAGE);
-        } else if (localList.get(position).getType() == 2) {
-            msg1.setTag(EventTag.START_VIDEO);
-        }
-        EventBus.getDefault().post(msg1);
-    }
-
     @Override
     protected void onResume() {
         super.onResume();
-        selectResource();
+        // 查询服务端资源
+        searchResource();
     }
 
     @Override
@@ -309,7 +290,7 @@ public class MainActivity extends BaseActivity<VideoView> {
     /**
      * 查询资源
      */
-    private void selectResource() {
+    private void searchResource() {
         JsonObject params = new JsonObject();
         params.addProperty("typeId", 0);
         Observable<Result> resultObservable = NetClient.getInstance(NetClient.getBaseUrl(), false).getApi().searchResources(params);
@@ -373,22 +354,18 @@ public class MainActivity extends BaseActivity<VideoView> {
             currentDownload = 0;
             downloadFile(downloadResource);
         } else {
-            // 展示列表
+            // 没有要下载的文件，直接展示列表
             viewPagerAdapter.notifyDataSetChanged();
             if (localList.size() > 0) {
                 int round = Integer.MAX_VALUE / 2 / localList.size();
-                int startPage = localList.size() * round;
-                LogUtils.d(TAG, "起始页面：" + startPage);
-                viewPager.setCurrentItem(startPage, false);
-                mCurPos = startPage;
-                startNewPage();
+                currentPosition = localList.size() * round;
+                viewPager.setCurrentItem(currentPosition, false);
             }
         }
     }
 
     @SuppressLint("NotifyDataSetChanged")
     private void downloadFile(List<Resource> downloadResource) {
-        LogUtils.d(TAG, "需要下载的文件共有" + downloadResource.size() + "个，当前下载第" + currentDownload + "个");
         if (currentDownload >= downloadResource.size()) {
             progressDialog.dismiss();
             return;
@@ -401,35 +378,25 @@ public class MainActivity extends BaseActivity<VideoView> {
         File file = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, mDownloadFileName);
         long range = 0;
         if (file.exists()) {
-            LogUtils.d(TAG, "文件" + resource.getId() + "存在");
             range = SPHelper.getLong(downloadUrl, 0);
             if (range == file.length()) {
-                LogUtils.d(TAG, "文件" + resource.getId() + "已存在且完整");
                 currentDownload++;
                 if (currentDownload < downloadResource.size()) {
                     downloadFile(downloadResource);
                     return;
                 } else {
                     progressDialog.dismiss();
-                    LogUtils.d(TAG, "所有文件下载完成");
                     // 重新查询本地资源文件
                     queryAllResource();
                     viewPagerAdapter.notifyDataSetChanged();
                     if (localList.size() > 0) {
                         int round = Integer.MAX_VALUE / 2 / localList.size();
-                        int startPage = localList.size() * round;
-                        LogUtils.d(TAG, "起始页面：" + startPage);
-                        viewPager.setCurrentItem(startPage, false);
-                        mCurPos = startPage;
-                        startNewPage();
+                        currentPosition = localList.size() * round;
+                        viewPager.setCurrentItem(currentPosition, false);
                     }
                 }
                 return;
-            } else {
-                LogUtils.d(TAG, "文件" + resource.getId() + "已存在但是不完整");
             }
-        } else {
-            LogUtils.d(TAG, "文件" + resource.getId() + "不存在，准备下载文件");
         }
         // 显示下载等待窗口
         progressDialog.show();
@@ -448,7 +415,6 @@ public class MainActivity extends BaseActivity<VideoView> {
             @Override
             public void onCompleted() {
                 runOnUiThread(() -> {
-                    LogUtils.d(TAG, "第" + (currentDownload + 1) + "个文件下载完成");
                     File file1 = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, mDownloadFileName);
                     // 更新本地数据库文件名和文件MD5值
                     resource.setLocalName(mDownloadFileName);
@@ -459,17 +425,13 @@ public class MainActivity extends BaseActivity<VideoView> {
                         downloadFile(downloadResource);
                     } else {
                         progressDialog.dismiss();
-                        LogUtils.d(TAG, "所有文件下载完成");
-                        // 重新查询本地资源文件
+                        // 所有文件下载完成，重新查询本地资源文件
                         queryAllResource();
                         viewPagerAdapter.notifyDataSetChanged();
                         if (localList.size() > 0) {
                             int round = Integer.MAX_VALUE / 2 / localList.size();
-                            int startPage = localList.size() * round;
-                            LogUtils.d(TAG, "起始页面：" + startPage);
-                            viewPager.setCurrentItem(startPage, false);
-                            mCurPos = startPage;
-                            startNewPage();
+                            currentPosition = localList.size() * round;
+                            viewPager.setCurrentItem(currentPosition, false);
                         }
                     }
                 });
@@ -478,7 +440,7 @@ public class MainActivity extends BaseActivity<VideoView> {
             @Override
             public void onError(String msg) {
                 progressDialog.dismiss();
-                LogUtils.d(TAG, "下载发生错误--" + msg);
+                Toast.makeText(mContext, "下载发生错误", Toast.LENGTH_SHORT).show();
             }
         })).start();
     }
@@ -501,7 +463,6 @@ public class MainActivity extends BaseActivity<VideoView> {
             if (lResource == null) {
                 // 如果本地没有相同ID的资源，则插入该资源
                 insertData(rResource);
-                LogUtils.d(TAG, "本地没有该资源" + rResource.getId() + "，插入资源");
             } else {
                 // 如果本地有相同ID的资源，则比较详细内容
                 if (rResource.getType() == lResource.getType() && rResource.getUrl().equals(lResource.getUrl()) && rResource.getMd5().equals(lResource.getMd5())) {
@@ -509,9 +470,6 @@ public class MainActivity extends BaseActivity<VideoView> {
                     if (rResource.getSort() != lResource.getSort()) {
                         // 如果排序不相同，更新本地资源记录的排序
                         updateSort(rResource);
-                        LogUtils.d(TAG, "资源" + rResource.getId() + "主要信息相同，排序不同，更新排序");
-                    } else {
-                        LogUtils.d(TAG, "资源" + rResource.getId() + "信息完全相同");
                     }
                 } else {
                     // 资源主要信息不匹配，删除本地的资源记录
@@ -521,9 +479,7 @@ public class MainActivity extends BaseActivity<VideoView> {
                         File file = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, lResource.getLocalName());
                         file.deleteOnExit();
                     }
-                    LogUtils.d(TAG, "资源" + rResource.getId() + "主要信息不同，删除本地记录和文件");
                     insertData(rResource);
-                    LogUtils.d(TAG, "重新插入资源" + rResource.getId());
                 }
             }
         }
@@ -545,7 +501,6 @@ public class MainActivity extends BaseActivity<VideoView> {
         }
         // 重新查询本地记录
         queryAllResource();
-        LogUtils.d(TAG, "本地资源数据量：" + localList.size());
         // 更新本地文件
         downloadResources();
     }
@@ -615,7 +570,6 @@ public class MainActivity extends BaseActivity<VideoView> {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 //向下键
-                LogUtils.d(TAG, "点击了下键");
                 int waitTime = SPHelper.getInt("SHOWTIME", 10);
                 if (waitTime == 3) {
                     Toast.makeText(mContext, "图片展示时间不得低于3秒", Toast.LENGTH_SHORT).show();
@@ -628,7 +582,6 @@ public class MainActivity extends BaseActivity<VideoView> {
                 break;
             case KeyEvent.KEYCODE_DPAD_UP:
                 // 向上键，增加图片停留时间
-                LogUtils.d(TAG, "点击了向上键");
                 int waitTime2 = SPHelper.getInt("SHOWTIME", 10);
                 waitTime2++;
                 SPHelper.save("SHOWTIME", waitTime2);
@@ -637,47 +590,65 @@ public class MainActivity extends BaseActivity<VideoView> {
                 break;
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 //向左键
-                LogUtils.d(TAG, "点击了左键");
                 // 滚动到上一页
-                mCurPos--;
-                viewPager.setCurrentItem(mCurPos, true);
+                currentPosition--;
+                viewPager.setCurrentItem(currentPosition, true);
                 break;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 //向右键
-                LogUtils.d(TAG, "点击了右键");
                 // 滚动到下一页
-                mCurPos++;
-                viewPager.setCurrentItem(mCurPos, true);
-                break;
-            case KeyEvent.KEYCODE_INFO:
-                //info键
-                LogUtils.d(TAG, "点击了Info键");
-                Toast.makeText(mContext, "点击了Info键", Toast.LENGTH_SHORT).show();
+                currentPosition++;
+                viewPager.setCurrentItem(currentPosition, true);
                 break;
             case KeyEvent.KEYCODE_MENU:
                 //菜单键
-                LogUtils.d(TAG, "点击了菜单键");
-                Toast.makeText(mContext, "点击了菜单键", Toast.LENGTH_SHORT).show();
+                startApp("com.ott.robottv");
                 break;
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_DPAD_CENTER:
-                //确定键enter
-                LogUtils.d(TAG, "点击了确定键");
-                Toast.makeText(mContext, "点击了确定键", Toast.LENGTH_SHORT).show();
+                // 确定键enter
+                // 图片暂停滚动（定时任务暂停）
+                timeTaskService.isPause = !timeTaskService.isPause;
+                // 视频暂停播放
+                if (mVideoView != null) {
+                    if (timeTaskService.isPause) {
+                        if (mVideoView.isPlaying()) {
+                            mVideoView.pause();
+                        }
+                    } else {
+                        mVideoView.start();
+                    }
+                }
                 break;
             case KeyEvent.KEYCODE_BACK:
-                //返回键
+                // 返回键
                 exitApp();
                 return true;
-            case KeyEvent.KEYCODE_SETTINGS:
-                //设置键
-                LogUtils.d(TAG, "点击了设置键");
-                Toast.makeText(mContext, "点击了设置键", Toast.LENGTH_SHORT).show();
-                break;
             default:
                 break;
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    /**
+     * 打开APP
+     *
+     * @param packagename 包名
+     */
+    private void startApp(String packagename) {
+        // 通过包名获取此APP详细信息，包括Activities、services、versioncode、name等等
+        PackageInfo packageinfo = null;
+        try {
+            packageinfo = getPackageManager().getPackageInfo(packagename, 0);
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+        }
+        if (packageinfo == null) {
+            Toast.makeText(getApplicationContext(), "没有找到应用", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent resolveIntent = getPackageManager().getLaunchIntentForPackage(packagename);
+        startActivity(resolveIntent);
     }
 
     /**
