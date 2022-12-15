@@ -88,10 +88,8 @@ public class MainActivity extends AppCompatActivity {
         mContext = this;
         setContentView(R.layout.activity_main);
 
-        mVideoView = new VideoView(this);
-        mVideoView.addOnStateChangeListener(simpleOnStateChangeListener);
-
         initViewPager();
+        initVideoView();
         initTimeTaskService();
         initDownloadDialog();
 
@@ -103,7 +101,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void initViewPager() {
         viewPager = findViewById(R.id.viewpager);
-//        viewPager.setOffscreenPageLimit(4);
         tvPage = findViewById(R.id.tvPage);
         remoteList = new ArrayList<>();
         localList = new ArrayList<>();
@@ -111,6 +108,13 @@ public class MainActivity extends AppCompatActivity {
         viewPager.setAdapter(viewPagerAdapter);
         viewPager.setOverScrollMode(View.OVER_SCROLL_NEVER);
         viewPager.registerOnPageChangeCallback(onPageChangeCallback);
+    }
+
+    private void initVideoView() {
+        mVideoView = new VideoView(this);
+        // 设置视频填充方式
+        mVideoView.setScreenScaleType(VideoView.SCREEN_SCALE_MATCH_PARENT);
+        mVideoView.addOnStateChangeListener(simpleOnStateChangeListener);
     }
 
     private void initDownloadDialog() {
@@ -180,13 +184,13 @@ public class MainActivity extends AppCompatActivity {
         //ViewPage2内部是通过RecyclerView去实现的，它位于ViewPager2的第0个位置
         RecyclerView mViewPagerImpl = (RecyclerView) viewPager.getChildAt(0);
         int count = mViewPagerImpl.getChildCount();
+        mVideoView.release();
         // 循环获取ViewHolder并设置
         for (int i = 0; i < count; i++) {
             View itemView = mViewPagerImpl.getChildAt(i);
             if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.VideoViewHolder) {
                 ViewPagerAdapter.VideoViewHolder viewHolder = (ViewPagerAdapter.VideoViewHolder) itemView.getTag();
                 // 先移除VideoView
-                mVideoView.release();
                 Utils.removeViewFormParent(mVideoView);
                 // 如果是当前显示的ViewHolder
                 if (viewHolder.mPosition == position) {

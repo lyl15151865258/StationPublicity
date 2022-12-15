@@ -6,7 +6,7 @@
 
     <item
         android:width="@dimen/dp_500"
-        android:height="@dimen/dp_60"
+        android:height="@dimen/dp_40"
         android:bottom="@dimen/dp_150"
         android:drawable="@drawable/ic_title"
         android:gravity="center" />

@@ -85,10 +85,8 @@ public class ViewPagerAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
     public int getItemViewType(int position) {
         if (resourceList.size() > 0) {
             if (resourceList.get(position % resourceList.size()).getType() == 1) {
-                LogUtils.d(TAG, "getItemViewType：" + position + "是图片");
                 return VIEW_TYPE_IMAGE;
             } else {
-                LogUtils.d(TAG, "getItemViewType：" + position + "是视频");
                 return VIEW_TYPE_VIDEO;
             }
         } else {
