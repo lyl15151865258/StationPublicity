@@ -80,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar myProgressBar;
     private AppCompatTextView tvPage, tvPercent, tvProgress;
     private VideoView mVideoView;
+    private boolean isFirstIn = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -272,13 +273,28 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 查询服务端资源
-        searchResource();
+        if (isFirstIn) {
+            // 查询服务端资源
+            searchResource();
+            isFirstIn = false;
+        }
+        if (timeTaskService != null) {
+            timeTaskService.isPause = false;
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        // 暂停定时任务
+        if (timeTaskService != null) {
+            timeTaskService.isPause = true;
+        }
+        if (mVideoView != null) {
+            if (mVideoView.isPlaying()) {
+                mVideoView.pause();
+            }
+        }
     }
 
     @Override
@@ -287,6 +303,7 @@ public class MainActivity extends AppCompatActivity {
             EventBus.getDefault().unregister(this);
         }
         timeTaskService.onDestroy();
+        unbindService(conn);
         super.onDestroy();
     }
 
@@ -581,7 +598,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                //向下键
+                // 向下键
                 int waitTime = SPHelper.getInt("SHOWTIME", 10);
                 if (waitTime == 3) {
                     Toast.makeText(mContext, "图片展示时间不得低于3秒", Toast.LENGTH_SHORT).show();
@@ -601,26 +618,31 @@ public class MainActivity extends AppCompatActivity {
                 timeTaskService.setShowTime(waitTime2);
                 break;
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                //向左键
+                // 向左键
                 // 滚动到上一页
                 currentPosition--;
                 viewPager.setCurrentItem(currentPosition, true);
                 break;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                //向右键
+                // 向右键
                 // 滚动到下一页
                 currentPosition++;
                 viewPager.setCurrentItem(currentPosition, true);
                 break;
             case KeyEvent.KEYCODE_MENU:
-                //菜单键
-                startApp("com.ott.robottv");
+                // 菜单键
+                startApp();
                 break;
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_DPAD_CENTER:
                 // 确定键enter
                 // 图片暂停滚动（定时任务暂停）
                 timeTaskService.isPause = !timeTaskService.isPause;
+                if (timeTaskService.isPause) {
+                    Toast.makeText(mContext, "暂停自动播放", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(mContext, "恢复自动播放", Toast.LENGTH_SHORT).show();
+                }
                 // 视频暂停播放
                 if (mVideoView != null) {
                     if (timeTaskService.isPause) {
@@ -645,18 +667,18 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 根据包名打开APP
      */
-    private void startApp(String packageName) {
+    private void startApp() {
         PackageInfo packageinfo = null;
         try {
-            packageinfo = getPackageManager().getPackageInfo(packageName, 0);
+            packageinfo = getPackageManager().getPackageInfo("com.ott.robottv", 0);
         } catch (PackageManager.NameNotFoundException e) {
             e.printStackTrace();
         }
         if (packageinfo == null) {
-            Toast.makeText(getApplicationContext(), "没有找到应用", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getApplicationContext(), "没有安装光伏清扫机器人监控系统", Toast.LENGTH_SHORT).show();
             return;
         }
-        Intent resolveIntent = getPackageManager().getLaunchIntentForPackage(packageName);
+        Intent resolveIntent = getPackageManager().getLaunchIntentForPackage("com.ott.robottv");
         startActivity(resolveIntent);
     }
 
