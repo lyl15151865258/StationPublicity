@@ -154,7 +154,8 @@ public class MainActivity extends AppCompatActivity {
             currentPosition = position;
             LogUtils.d(TAG, "当前选中页面：" + currentPosition);
             if (localList != null && localList.size() > 0) {
-                viewPager.post(() -> startPlay(position % localList.size()));
+//                viewPager.post(() -> startPlay(position % localList.size()));
+                viewPager.postDelayed(() -> startPlay(position % localList.size()), 100);
                 // 显示/隐藏页码
                 if (localList.size() > 1) {
                     tvPage.setVisibility(View.VISIBLE);
@@ -175,29 +176,9 @@ public class MainActivity extends AppCompatActivity {
     };
 
     private void startPlay(int position) {
-        if (localList == null || localList.size() == 0) {
-            return;
-        }
         //ViewPage2内部是通过RecyclerView去实现的，它位于ViewPager2的第0个位置
         RecyclerView mViewPagerImpl = (RecyclerView) viewPager.getChildAt(0);
         int count = mViewPagerImpl.getChildCount();
-        LogUtils.d(TAG, "展示资源：" + localList.get(position).getLocalName());
-        LogUtils.d(TAG, "mViewPagerImpl的item个数：" + count);
-//        if (count == 0) {
-//            if (localList.get(position).getType() == 1) {
-//                // 当资源数量大于1个时，发送播放图片的通知
-//                if (localList.size() > 1) {
-//                    EventMsg msg = new EventMsg();
-//                    msg.setTag(EventTag.START_IMAGE);
-//                    EventBus.getDefault().post(msg);
-//                }
-//            } else {
-//                // 发送播放视频的通知
-//                EventMsg msg = new EventMsg();
-//                msg.setTag(EventTag.START_VIDEO);
-//                EventBus.getDefault().post(msg);
-//            }
-//        } else {
         // 循环获取ViewHolder并设置
         for (int i = 0; i < count; i++) {
             View itemView = mViewPagerImpl.getChildAt(i);
@@ -207,7 +188,7 @@ public class MainActivity extends AppCompatActivity {
                 mVideoView.release();
                 Utils.removeViewFormParent(mVideoView);
                 // 如果是当前显示的ViewHolder
-                if (viewHolder.mPosition == position % localList.size()) {
+                if (viewHolder.mPosition == position) {
                     Resource resource = localList.get(position);
                     File file = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, resource.getLocalName());
                     LogUtils.d(TAG, "当前是VideoViewHolder，position匹配，展示视频：" + localList.get(position).getLocalName());
@@ -225,7 +206,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             } else if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.ImageViewHolder) {
                 ViewPagerAdapter.ImageViewHolder viewHolder = (ViewPagerAdapter.ImageViewHolder) itemView.getTag();
-                if (viewHolder.mPosition == position % localList.size()) {
+                if (viewHolder.mPosition == position) {
                     LogUtils.d(TAG, "当前是ImageViewHolder，position匹配，展示图片：" + localList.get(position).getLocalName());
                     // 当资源数量大于1个时，发送播放图片的通知
                     if (localList.size() > 1) {
@@ -233,13 +214,13 @@ public class MainActivity extends AppCompatActivity {
                         msg.setTag(EventTag.START_IMAGE);
                         EventBus.getDefault().post(msg);
                     }
+                    break;
                 } else {
                     LogUtils.d(TAG, "当前是ImageViewHolder，position不匹配");
                 }
             } else {
                 LogUtils.d(TAG, "itemView为null");
             }
-//            }
         }
     }
 
