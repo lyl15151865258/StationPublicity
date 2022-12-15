@@ -670,7 +670,7 @@ public class MainActivity extends AppCompatActivity {
     private void startApp() {
         PackageInfo packageinfo = null;
         try {
-            packageinfo = getPackageManager().getPackageInfo("com.ott.robottv", 0);
+            packageinfo = getPackageManager().getPackageInfo("com.ottsz.robottv", 0);
         } catch (PackageManager.NameNotFoundException e) {
             e.printStackTrace();
         }
@@ -678,7 +678,7 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(getApplicationContext(), "没有安装光伏清扫机器人监控系统", Toast.LENGTH_SHORT).show();
             return;
         }
-        Intent resolveIntent = getPackageManager().getLaunchIntentForPackage("com.ott.robottv");
+        Intent resolveIntent = getPackageManager().getLaunchIntentForPackage("com.ottsz.robottv");
         startActivity(resolveIntent);
     }
 
