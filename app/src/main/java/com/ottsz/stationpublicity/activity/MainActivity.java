@@ -3,6 +3,7 @@ package com.ottsz.stationpublicity.activity;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatTextView;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
 import android.annotation.SuppressLint;
@@ -44,6 +45,7 @@ import com.ottsz.stationpublicity.util.FileUtil;
 import com.ottsz.stationpublicity.util.GsonUtils;
 import com.ottsz.stationpublicity.util.LogUtils;
 import com.ottsz.stationpublicity.util.NetworkUtil;
+import com.ottsz.stationpublicity.util.Utils;
 import com.ottsz.stationpublicity.widget.DownLoadDialog;
 import com.ottsz.stationpublicity.widget.SelectDialog;
 
@@ -61,6 +63,8 @@ import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.schedulers.Schedulers;
+import xyz.doikki.videoplayer.player.BaseVideoView;
+import xyz.doikki.videoplayer.player.VideoView;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -75,12 +79,16 @@ public class MainActivity extends AppCompatActivity {
     private DownLoadDialog progressDialog;
     private ProgressBar myProgressBar;
     private AppCompatTextView tvPage, tvPercent, tvProgress;
+    private VideoView mVideoView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mContext = this;
         setContentView(R.layout.activity_main);
+
+        mVideoView = new VideoView(this);
+        mVideoView.addOnStateChangeListener(simpleOnStateChangeListener);
 
         initViewPager();
         initTimeTaskService();
@@ -113,6 +121,26 @@ public class MainActivity extends AppCompatActivity {
         progressDialog.setCancelable(false);
     }
 
+    private final BaseVideoView.SimpleOnStateChangeListener simpleOnStateChangeListener = new BaseVideoView.SimpleOnStateChangeListener() {
+        @Override
+        public void onPlayStateChanged(int playState) {
+            if (playState == VideoView.STATE_PLAYBACK_COMPLETED) {
+                // 视频播放结束
+                if (!timeTaskService.isPause) {
+                    // 如果当前没有手动暂停
+                    if (localList.size() > 1) {
+                        // 资源大于1个时，则播放完毕后，播放下一个资源
+                        currentPosition++;
+                        viewPager.setCurrentItem(currentPosition, true);
+                    } else {
+                        // 资源数等于1时，停留在当前位置
+                        viewPager.setCurrentItem(currentPosition, true);
+                    }
+                }
+            }
+        }
+    };
+
     private final ViewPager2.OnPageChangeCallback onPageChangeCallback = new ViewPager2.OnPageChangeCallback() {
 
         @Override
@@ -126,7 +154,7 @@ public class MainActivity extends AppCompatActivity {
             currentPosition = position;
             LogUtils.d(TAG, "当前选中页面：" + currentPosition);
             if (localList != null && localList.size() > 0) {
-                viewPager.post(() -> viewPagerAdapter.startPlay(viewPager, position % localList.size()));
+                viewPager.post(() -> startPlay(position % localList.size()));
                 // 显示/隐藏页码
                 if (localList.size() > 1) {
                     tvPage.setVisibility(View.VISIBLE);
@@ -142,78 +170,78 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onPageScrollStateChanged(int state) {
             super.onPageScrollStateChanged(state);
+            LogUtils.d(TAG, "当前滑动状态：" + state);
         }
     };
 
-//    private void startPlay(int position) {
-//        if (localList == null || localList.size() == 0) {
-//            return;
-//        }
-//        //ViewPage2内部是通过RecyclerView去实现的，它位于ViewPager2的第0个位置
-//        RecyclerView mViewPagerImpl = (RecyclerView) viewPager.getChildAt(0);
-//        int count = mViewPagerImpl.getChildCount();
-//        LogUtils.d(TAG, "展示资源：" + localList.get(position).getLocalName());
-//        LogUtils.d(TAG, "mViewPagerImpl的item个数：" + count);
-////        if (count == 0) {
-////            if (localList.get(position).getType() == 1) {
-////                // 当资源数量大于1个时，发送播放图片的通知
-////                if (localList.size() > 1) {
-////                    EventMsg msg = new EventMsg();
-////                    msg.setTag(EventTag.START_IMAGE);
-////                    EventBus.getDefault().post(msg);
-////                }
-////            } else {
-////                // 发送播放视频的通知
-////                EventMsg msg = new EventMsg();
-////                msg.setTag(EventTag.START_VIDEO);
-////                EventBus.getDefault().post(msg);
-////            }
-////        } else {
-//            // 循环获取ViewHolder并设置
-//            for (int i = 0; i < count; i++) {
-//                View itemView = mViewPagerImpl.getChildAt(i);
-//                if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.VideoViewHolder) {
-//                    ViewPagerAdapter.VideoViewHolder viewHolder = (ViewPagerAdapter.VideoViewHolder) itemView.getTag();
-//                    // 先移除VideoView
-//                    mVideoView.release();
-//                    Utils.removeViewFormParent(mVideoView);
-//                    // 如果是当前显示的ViewHolder
-//                    if (viewHolder.mPosition == position % localList.size()) {
-//                        Resource resource = localList.get(position);
-//                        File file = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, resource.getLocalName());
-//                        LogUtils.d(TAG, "当前是VideoViewHolder，position匹配，展示视频：" + localList.get(position).getLocalName());
-//                        mVideoView.setLooping(localList.size() == 1);
-//                        String playUrl = mPreloadManager.getPlayUrl(file.getAbsolutePath());
-//                        mVideoView.setUrl(playUrl);
-//                        viewHolder.mPlayerContainer.addView(mVideoView, 0);
-//                        mVideoView.start();
-//                        // 发送播放视频的通知
-//                        EventMsg msg = new EventMsg();
-//                        msg.setTag(EventTag.START_VIDEO);
-//                        EventBus.getDefault().post(msg);
-//                        break;
-//                    } else {
-//                        LogUtils.d(TAG, "当前是VideoViewHolder，position不匹配");
-//                    }
-//                } else if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.ImageViewHolder) {
-//                    ViewPagerAdapter.ImageViewHolder viewHolder = (ViewPagerAdapter.ImageViewHolder) itemView.getTag();
-//                    if (viewHolder.mPosition == position % localList.size()) {
-//                        LogUtils.d(TAG, "当前是ImageViewHolder，position匹配，展示图片：" + localList.get(position).getLocalName());
-//                        // 当资源数量大于1个时，发送播放图片的通知
-//                        if (localList.size() > 1) {
-//                            EventMsg msg = new EventMsg();
-//                            msg.setTag(EventTag.START_IMAGE);
-//                            EventBus.getDefault().post(msg);
-//                        }
-//                    } else {
-//                        LogUtils.d(TAG, "当前是ImageViewHolder，position不匹配");
-//                    }
-//                } else {
-//                    LogUtils.d(TAG, "itemView为null");
+    private void startPlay(int position) {
+        if (localList == null || localList.size() == 0) {
+            return;
+        }
+        //ViewPage2内部是通过RecyclerView去实现的，它位于ViewPager2的第0个位置
+        RecyclerView mViewPagerImpl = (RecyclerView) viewPager.getChildAt(0);
+        int count = mViewPagerImpl.getChildCount();
+        LogUtils.d(TAG, "展示资源：" + localList.get(position).getLocalName());
+        LogUtils.d(TAG, "mViewPagerImpl的item个数：" + count);
+//        if (count == 0) {
+//            if (localList.get(position).getType() == 1) {
+//                // 当资源数量大于1个时，发送播放图片的通知
+//                if (localList.size() > 1) {
+//                    EventMsg msg = new EventMsg();
+//                    msg.setTag(EventTag.START_IMAGE);
+//                    EventBus.getDefault().post(msg);
 //                }
-////            }
-//        }
-//    }
+//            } else {
+//                // 发送播放视频的通知
+//                EventMsg msg = new EventMsg();
+//                msg.setTag(EventTag.START_VIDEO);
+//                EventBus.getDefault().post(msg);
+//            }
+//        } else {
+        // 循环获取ViewHolder并设置
+        for (int i = 0; i < count; i++) {
+            View itemView = mViewPagerImpl.getChildAt(i);
+            if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.VideoViewHolder) {
+                ViewPagerAdapter.VideoViewHolder viewHolder = (ViewPagerAdapter.VideoViewHolder) itemView.getTag();
+                // 先移除VideoView
+                mVideoView.release();
+                Utils.removeViewFormParent(mVideoView);
+                // 如果是当前显示的ViewHolder
+                if (viewHolder.mPosition == position % localList.size()) {
+                    Resource resource = localList.get(position);
+                    File file = new File(ApkInfo.APP_ROOT_PATH + ApkInfo.DOWNLOAD_DIR, resource.getLocalName());
+                    LogUtils.d(TAG, "当前是VideoViewHolder，position匹配，展示视频：" + localList.get(position).getLocalName());
+                    mVideoView.setLooping(localList.size() == 1);
+                    mVideoView.setUrl(file.getAbsolutePath());
+                    viewHolder.container.addView(mVideoView, 0);
+                    mVideoView.start();
+                    // 发送播放视频的通知
+                    EventMsg msg = new EventMsg();
+                    msg.setTag(EventTag.START_VIDEO);
+                    EventBus.getDefault().post(msg);
+                    break;
+                } else {
+                    LogUtils.d(TAG, "当前是VideoViewHolder，position不匹配");
+                }
+            } else if (itemView != null && itemView.getTag() instanceof ViewPagerAdapter.ImageViewHolder) {
+                ViewPagerAdapter.ImageViewHolder viewHolder = (ViewPagerAdapter.ImageViewHolder) itemView.getTag();
+                if (viewHolder.mPosition == position % localList.size()) {
+                    LogUtils.d(TAG, "当前是ImageViewHolder，position匹配，展示图片：" + localList.get(position).getLocalName());
+                    // 当资源数量大于1个时，发送播放图片的通知
+                    if (localList.size() > 1) {
+                        EventMsg msg = new EventMsg();
+                        msg.setTag(EventTag.START_IMAGE);
+                        EventBus.getDefault().post(msg);
+                    }
+                } else {
+                    LogUtils.d(TAG, "当前是ImageViewHolder，position不匹配");
+                }
+            } else {
+                LogUtils.d(TAG, "itemView为null");
+            }
+//            }
+        }
+    }
 
     /**
      * 初始化并绑定TimeTaskService
@@ -247,8 +275,6 @@ public class MainActivity extends AppCompatActivity {
         switch (msg.getTag()) {
             case EventTag.NEXT_PAGE:
                 // 滚动到下一页
-            case EventTag.STOP_VIDEO:
-                // 视频停止播放
                 currentPosition++;
                 viewPager.setCurrentItem(currentPosition, true);
                 break;
@@ -615,15 +641,15 @@ public class MainActivity extends AppCompatActivity {
                 // 图片暂停滚动（定时任务暂停）
                 timeTaskService.isPause = !timeTaskService.isPause;
                 // 视频暂停播放
-//                if (mVideoView != null) {
-//                    if (timeTaskService.isPause) {
-//                        if (mVideoView.isPlaying()) {
-//                            mVideoView.pause();
-//                        }
-//                    } else {
-//                        mVideoView.start();
-//                    }
-//                }
+                if (mVideoView != null) {
+                    if (timeTaskService.isPause) {
+                        if (mVideoView.isPlaying()) {
+                            mVideoView.pause();
+                        }
+                    } else {
+                        mVideoView.start();
+                    }
+                }
                 break;
             case KeyEvent.KEYCODE_BACK:
                 // 返回键
@@ -636,15 +662,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 打开APP
-     *
-     * @param packagename 包名
+     * 根据包名打开APP
      */
-    private void startApp(String packagename) {
-        // 通过包名获取此APP详细信息，包括Activities、services、versioncode、name等等
+    private void startApp(String packageName) {
         PackageInfo packageinfo = null;
         try {
-            packageinfo = getPackageManager().getPackageInfo(packagename, 0);
+            packageinfo = getPackageManager().getPackageInfo(packageName, 0);
         } catch (PackageManager.NameNotFoundException e) {
             e.printStackTrace();
         }
@@ -652,7 +675,7 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(getApplicationContext(), "没有找到应用", Toast.LENGTH_SHORT).show();
             return;
         }
-        Intent resolveIntent = getPackageManager().getLaunchIntentForPackage(packagename);
+        Intent resolveIntent = getPackageManager().getLaunchIntentForPackage(packageName);
         startActivity(resolveIntent);
     }
 
