@@ -281,9 +281,15 @@ public class MainActivity extends AppCompatActivity {
             // 查询服务端资源
             searchResource();
             isFirstIn = false;
-        }
-        if (timeTaskService != null) {
-            timeTaskService.isPause = false;
+        } else {
+            if (timeTaskService != null) {
+                timeTaskService.isPause = false;
+                timeTaskService.resetStartTime();
+            }
+            // 视频恢复播放
+            if (mVideoView != null) {
+                mVideoView.start();
+            }
         }
     }
 
@@ -640,7 +646,7 @@ public class MainActivity extends AppCompatActivity {
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_DPAD_CENTER:
                 // 确定键enter
-                // 图片暂停滚动（定时任务暂停）
+                // 手动暂停任务，图片暂停滚动（定时任务暂停）
                 timeTaskService.isPause = !timeTaskService.isPause;
                 if (timeTaskService.isPause) {
                     Toast.makeText(mContext, "暂停自动播放", Toast.LENGTH_SHORT).show();

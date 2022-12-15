@@ -170,6 +170,17 @@ public class TimeTaskService extends Service {
         }
     }
 
+    /**
+     * 重置开始时间，用于切换到其他应用后返回
+     */
+    public void resetStartTime() {
+        if (currentSourceType == 1) {
+            startTime = TimeUtils.getCurrentTimeMillis();
+        } else {
+            startTime = Long.MAX_VALUE;
+        }
+    }
+
     @Override
     public void onDestroy() {
         threadPool.shutdown();
