@@ -288,7 +288,9 @@ public class MainActivity extends AppCompatActivity {
             }
             // 视频恢复播放
             if (mVideoView != null) {
-                mVideoView.start();
+                if (localList != null && localList.size() > 0 && localList.get(currentPosition % localList.size()).getType() == 2) {
+                    mVideoView.start();
+                }
             }
         }
     }
@@ -660,7 +662,10 @@ public class MainActivity extends AppCompatActivity {
                             mVideoView.pause();
                         }
                     } else {
-                        mVideoView.start();
+                        // 只有当前页面是视频页面才需要播放
+                        if (localList != null && localList.size() > 0 && localList.get(currentPosition % localList.size()).getType() == 2) {
+                            mVideoView.start();
+                        }
                     }
                 }
                 break;
