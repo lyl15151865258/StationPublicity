@@ -6,8 +6,6 @@ import android.view.KeyEvent;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.ottsz.stationpublicity.R;
-
 /**
  * Logo页面
  * Created at 2022/12/07 09:23
